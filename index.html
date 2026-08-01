@@ -479,21 +479,24 @@ function defaultTemplate() {
       { id: uid(), name: 'Claude', defaultAmount: 3000 }
     ]},
     { id: uid(), name: 'REI', defaultAmount: null, children: [
+      { id: uid(), name: 'ART', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
       { id: uid(), name: '定期', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
       { id: uid(), name: '小遣い', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
       { id: uid(), name: '美容院', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
       { id: uid(), name: '病院', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
-      { id: uid(), name: '交通費', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
-      { id: uid(), name: 'ART', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] }
+      { id: uid(), name: '交通費', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] }
     ]},
     { id: uid(), name: 'TOMO', defaultAmount: null, children: [
+      { id: uid(), name: 'ART', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
       { id: uid(), name: '美容院', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
       { id: uid(), name: '美容代', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
       { id: uid(), name: '病院', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
       { id: uid(), name: '整体', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
-      { id: uid(), name: '交通費', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
-      { id: uid(), name: 'ART', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] }
+      { id: uid(), name: '交通費', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] }
     ]},
+    // AKO はこの子にかかったお金をそのまま並べていくだけなので、
+    // 食費・立替分と同じ、日付・場所・金額を何度でも足せる形にしてある。
+    { id: uid(), name: 'AKO', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
     { id: uid(), name: '分割払い残高', defaultAmount: null, noChildAdd: true, children: [
       { id: uid(), name: 'MI Card', defaultAmount: null },
       { id: uid(), name: 'JCB', defaultAmount: null }
@@ -834,6 +837,45 @@ if (!data.schemaFlags.artInReiTomo) {
     });
   });
   data.schemaFlags.artInReiTomo = true;
+}
+// REI・TOMO の中の ART を先頭へ。並び替えも一度きりにしてあるのは、毎回
+// やり直すと、あとからユーザーがスワイプで動かした位置を上書きしてしまうため。
+if (!data.schemaFlags.artFirstInReiTomo) {
+  const moveArtFirst = (children) => {
+    if (!Array.isArray(children)) return;
+    const idx = children.findIndex(c => c.name === 'ART');
+    if (idx > 0) children.unshift(children.splice(idx, 1)[0]);
+  };
+  ['REI', 'TOMO'].forEach(name => {
+    const t = data.template.find(x => x.name === name);
+    if (t) moveArtFirst(t.children);
+    Object.values(data.cycles).forEach(cycle => {
+      const item = cycle.items.find(i => i.name === name);
+      if (item) moveArtFirst(item.children);
+    });
+  });
+  data.schemaFlags.artFirstInReiTomo = true;
+}
+// AKO を TOMO の直後に追加。この子にかかったお金をそのまま並べていくだけの
+// 使い方なので、食費・立替分と同じ、日付・場所・金額を何度でも足せる形。
+// 末尾ではなく TOMO の隣に置きたいので、push ではなく splice で差し込む。
+if (!data.schemaFlags.akoAdded) {
+  const akoId = uid();
+  const insertAfterTomo = (items, makeItem) => {
+    if (items.some(i => i.name === 'AKO')) return;
+    const idx = items.findIndex(i => i.name === 'TOMO');
+    items.splice(idx < 0 ? items.length : idx + 1, 0, makeItem());
+  };
+  insertAfterTomo(data.template, () => ({
+    id: akoId, name: 'AKO', defaultAmount: null, noChildAdd: true, autoEntries: true, children: []
+  }));
+  Object.values(data.cycles).forEach(cycle => {
+    insertAfterTomo(cycle.items, () => ({
+      id: akoId, name: 'AKO', amount: null, payment: 'none', date: null, place: '',
+      noChildAdd: true, autoEntries: true, children: []
+    }));
+  });
+  data.schemaFlags.akoAdded = true;
 }
 saveData();
 
