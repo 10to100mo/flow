@@ -118,7 +118,11 @@
     .card-value { font-size: 22px; font-variant-numeric: tabular-nums; }
     .card-value.cash, .card-value.card,
     .card-value.special, .card-value.windfall { border: 1px solid #262626; padding: 10px 12px; }
-    .card-value.cash { color: #ff00ff; }
+    /* 現金 was pure magenta (#ff00ff), whose chroma is ~1.8x that of the
+       other three accents — on an OLED phone it bloomed and read as
+       brighter than everything around it. Toned to sit inside the same
+       range as カード / 特別枠 / 舞い込み金 while staying recognisably magenta. */
+    .card-value.cash { color: #f983f7; }
     .card-value.card { color: #00ff7f; }
     .card-value.special { color: #00bfff; }
     .card-value.windfall { color: #ffd23f; }
@@ -180,7 +184,7 @@
     }
     .amount-chip.empty { color: #bbb; font-size: 17px; }
     .amount-chip.none { color: #fff; }
-    .amount-chip.cash { color: #ff00ff; }
+    .amount-chip.cash { color: #f983f7; }
     .amount-chip.card { color: #00ff7f; }
 
     .edit-form { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -367,7 +371,7 @@
 
     <div class="legend">
       <span><span class="legend-swatch" style="background:#fff;"></span>未選択</span>
-      <span><span class="legend-swatch" style="background:#ff00ff;"></span>現金</span>
+      <span><span class="legend-swatch" style="background:#f983f7;"></span>現金</span>
       <span><span class="legend-swatch" style="background:#00ff7f;"></span>カード</span>
     </div>
 
