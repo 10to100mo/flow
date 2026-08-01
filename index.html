@@ -116,9 +116,25 @@
     .card { flex: 1 1 130px; border: 1px solid #262626; padding: 10px 12px; }
     .card-label { font-size: 12px; letter-spacing: 0.15em; color: #999; margin-bottom: 4px; }
     .card-value { font-size: 22px; font-variant-numeric: tabular-nums; }
-    .card-value.cash, .card-value.card { border: 1px solid #262626; padding: 10px 12px; }
+    .card-value.cash, .card-value.card,
+    .card-value.special, .card-value.windfall { border: 1px solid #262626; padding: 10px 12px; }
     .card-value.cash { color: #ff00ff; }
     .card-value.card { color: #00ff7f; }
+    .card-value.special { color: #00bfff; }
+    .card-value.windfall { color: #ffd23f; }
+
+    /* Editable cards (特別枠・舞い込み金) — same look as the read-only
+       総額 cards above, so the sheet reads as one row of figures rather
+       than a form bolted onto it. Kept at the card's 22px so iOS Safari
+       doesn't auto-zoom the page on focus (it does that below 16px). */
+    .card-input {
+      border: none; background: transparent; width: 100%;
+      font-family: inherit; font-weight: 300; letter-spacing: inherit;
+      padding: 0; outline: none; -moz-appearance: textfield;
+    }
+    .card-input::placeholder { color: #444; }
+    .card-input::-webkit-outer-spin-button,
+    .card-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
     .card-value.balance.positive { color: #fff; }
     .card-value.balance.negative { color: #fff; }
     .card-value.total { color: #fff; }
@@ -304,14 +320,17 @@
       <input type="number" id="total-budget-input" class="budget-total-input" step="1000" />
     </div>
 
-    <div class="budget-total-row">
-      <label for="special-fund-input">特別枠</label>
-      <input type="number" id="special-fund-input" class="budget-total-input" step="1000" />
-    </div>
-
-    <div class="budget-total-row">
-      <label for="windfall-input">舞い込み金</label>
-      <input type="number" id="windfall-input" class="budget-total-input" step="1000" />
+    <div class="cards-row">
+      <div class="card">
+        <div class="card-label">特別枠</div>
+        <input type="text" inputmode="numeric" id="special-fund-input"
+               class="card-value special card-input" placeholder="¥0" />
+      </div>
+      <div class="card">
+        <div class="card-label">舞い込み金</div>
+        <input type="text" inputmode="numeric" id="windfall-input"
+               class="card-value windfall card-input" placeholder="¥0" />
+      </div>
     </div>
 
     <div class="cards-row">
@@ -796,6 +815,21 @@ function formatCurrency(n) {
   return '¥' + Math.round(n).toLocaleString('ja-JP');
 }
 
+// Money typed into a text field, in whatever shape it arrives: full-width
+// digits from a Japanese keyboard (３０００), a ¥/￥ prefix, thousands
+// separators, stray spaces. These fields are type="text" rather than
+// type="number" precisely so this can be handled — iOS Safari hands back an
+// empty string from a number field for any input it considers malformed,
+// which silently discards what was typed instead of parsing it.
+function parseYenInput(str) {
+  if (typeof str !== 'string') return 0;
+  const normalized = str
+    .replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    .replace(/[¥￥,，\s]/g, '');
+  const val = parseFloat(normalized);
+  return (isFinite(val) && val > 0) ? val : 0;
+}
+
 function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -1024,20 +1058,36 @@ document.getElementById('total-budget-input').addEventListener('change', (e) => 
   saveData();
   renderSummary();
 });
-document.getElementById('special-fund-input').addEventListener('change', (e) => {
-  const val = parseFloat(e.target.value);
-  const cycle = ensureCycle(currentCycle);
-  cycle.specialFund = (val > 0) ? val : 0;
-  saveData();
-  renderSummary();
-});
-document.getElementById('windfall-input').addEventListener('change', (e) => {
-  const val = parseFloat(e.target.value);
-  const cycle = ensureCycle(currentCycle);
-  cycle.windfall = (val > 0) ? val : 0;
-  saveData();
-  renderSummary();
-});
+// 特別枠・舞い込み金. These bind on 'input' rather than 'change' so the 残り
+// figure moves while the number is still being typed — 'change' only fires
+// once the field loses focus, which on a phone can mean tapping away and
+// seeing nothing happen in between.
+function bindFundInput(id, field) {
+  const el = document.getElementById(id);
+  el.addEventListener('input', () => {
+    const cycle = ensureCycle(currentCycle);
+    cycle[field] = parseYenInput(el.value);
+    saveData();
+    renderSummary();
+  });
+  // Show the bare number while editing (easier to correct than "¥30,000"),
+  // and the formatted figure the rest of the time so the card matches the
+  // 現金・カード totals beside it.
+  el.addEventListener('focus', () => {
+    const cycle = ensureCycle(currentCycle);
+    el.value = cycle[field] ? String(cycle[field]) : '';
+    el.select();
+  });
+  el.addEventListener('blur', () => {
+    const cycle = ensureCycle(currentCycle);
+    el.value = cycle[field] ? formatCurrency(cycle[field]) : '';
+  });
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
+  });
+}
+bindFundInput('special-fund-input', 'specialFund');
+bindFundInput('windfall-input', 'windfall');
 
 /* ── ADD TOP-LEVEL ITEM ── */
 document.getElementById('add-top-item-btn').addEventListener('click', () => {
@@ -1589,8 +1639,17 @@ function renderSummary() {
   document.getElementById('budget-grand-total').textContent = formatCurrency(budgetGrandTotal);
   document.getElementById('grand-total').textContent = formatCurrency(grand);
   document.getElementById('total-budget-input').value = cycle.totalBudget || '';
-  document.getElementById('special-fund-input').value = cycle.specialFund || '';
-  document.getElementById('windfall-input').value = cycle.windfall || '';
+  setFundInputValue('special-fund-input', cycle.specialFund);
+  setFundInputValue('windfall-input', cycle.windfall);
+}
+
+function setFundInputValue(id, value) {
+  const el = document.getElementById(id);
+  // renderSummary() runs on every keystroke in these fields — reformatting
+  // the very field being typed into would fight the caret, so leave the
+  // focused one alone and let its blur handler format it.
+  if (document.activeElement === el) return;
+  el.value = value ? formatCurrency(value) : '';
 }
 
 /* ── RENDER: SHEET (all) ── */
