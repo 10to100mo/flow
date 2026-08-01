@@ -483,14 +483,16 @@ function defaultTemplate() {
       { id: uid(), name: '小遣い', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
       { id: uid(), name: '美容院', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
       { id: uid(), name: '病院', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
-      { id: uid(), name: '交通費', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] }
+      { id: uid(), name: '交通費', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
+      { id: uid(), name: 'ART', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] }
     ]},
     { id: uid(), name: 'TOMO', defaultAmount: null, children: [
       { id: uid(), name: '美容院', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
       { id: uid(), name: '美容代', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
       { id: uid(), name: '病院', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
       { id: uid(), name: '整体', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
-      { id: uid(), name: '交通費', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] }
+      { id: uid(), name: '交通費', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
+      { id: uid(), name: 'ART', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] }
     ]},
     { id: uid(), name: '分割払い残高', defaultAmount: null, noChildAdd: true, children: [
       { id: uid(), name: 'MI Card', defaultAmount: null },
@@ -810,6 +812,28 @@ if (!data.schemaFlags.budget770k) {
     if (cycle.totalBudget === 700000) cycle.totalBudget = 770000;
   });
   data.schemaFlags.budget770k = true;
+}
+// REI・TOMO の中に ART を追加。既に開いたことのあるサイクルにも行き渡らせ
+// たいので、テンプレートと materialize 済みの各サイクルの両方に入れる。
+// 兄弟の 定期・小遣い などと同じ、日付・場所・金額を何度でも足せる形。
+// schemaFlags で一度きりにしてあるのは、あとから ART を削除したときに次回
+// 読み込みで勝手に復活させないため(Suica の削除・予算770000 と同じ理由)。
+if (!data.schemaFlags.artInReiTomo) {
+  ['REI', 'TOMO'].forEach(parentName => {
+    const tmplParent = data.template.find(t => t.name === parentName);
+    if (!tmplParent || !Array.isArray(tmplParent.children)) return;
+    const newId = uid();
+    if (!tmplParent.children.some(c => c.name === 'ART')) {
+      tmplParent.children.push({ id: newId, name: 'ART', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] });
+    }
+    Object.values(data.cycles).forEach(cycle => {
+      const parent = cycle.items.find(i => i.name === parentName);
+      if (!parent || !Array.isArray(parent.children)) return;
+      if (parent.children.some(c => c.name === 'ART')) return;
+      parent.children.push({ id: newId, name: 'ART', amount: null, payment: 'none', date: null, place: '', noChildAdd: true, autoEntries: true, children: [] });
+    });
+  });
+  data.schemaFlags.artInReiTomo = true;
 }
 saveData();
 
