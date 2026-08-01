@@ -357,6 +357,10 @@
 
     <div class="cards-row">
       <div class="card">
+        <div class="card-label">記入額 合計</div>
+        <div class="card-value total" id="entered-grand-total">¥0</div>
+      </div>
+      <div class="card">
         <div class="card-label">支出 合計</div>
         <div class="card-value total" id="grand-total">¥0</div>
       </div>
@@ -1629,10 +1633,14 @@ function renderSummary() {
   // 支出合計・残高ともに、現金・カードで確定した支出のみを対象にする。
   // 未選択(黒)のままの金額はまだ請求が来ていない予定額として扱い、含めない。
   const grand = cash + card;
-  // 特別枠・舞い込み金は予算外で入ってきたお金として、全体予算に上乗せする。
-  const balance = (cycle.totalBudget || 0) + (cycle.specialFund || 0) + (cycle.windfall || 0) - grand;
-  // 予算合計は確定(現金・カード)未確定(未選択)を問わず、入力された金額すべての合計。
-  const budgetGrandTotal = sumBy(cycle.items, () => true);
+  // 予算合計はこのサイクルで使えるお金の総額。特別枠・舞い込み金は予算外で
+  // 入ってきたお金なので、全体予算に上乗せする。残りをこの値から引く形にして
+  // あるので、画面上でも「予算 合計 − 支出 合計 = 残り」がそのまま成り立つ。
+  const budgetGrandTotal = (cycle.totalBudget || 0) + (cycle.specialFund || 0) + (cycle.windfall || 0);
+  const balance = budgetGrandTotal - grand;
+  // 記入額合計は確定(現金・カード)未確定(未選択)を問わず、
+  // 各項目に入力された金額すべての合計。支出合計との差が未確定分にあたる。
+  const enteredGrandTotal = sumBy(cycle.items, () => true);
 
   document.getElementById('sum-cash').textContent = formatCurrency(cash);
   document.getElementById('sum-card').textContent = formatCurrency(card);
@@ -1641,6 +1649,7 @@ function renderSummary() {
   balanceEl.className = 'card-value balance ' + (balance >= 0 ? 'positive' : 'negative');
 
   document.getElementById('budget-grand-total').textContent = formatCurrency(budgetGrandTotal);
+  document.getElementById('entered-grand-total').textContent = formatCurrency(enteredGrandTotal);
   document.getElementById('grand-total').textContent = formatCurrency(grand);
   document.getElementById('total-budget-input').value = cycle.totalBudget || '';
   setFundInputValue('special-fund-input', cycle.specialFund);
