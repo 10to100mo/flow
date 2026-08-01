@@ -102,8 +102,16 @@
 
     .budget-total-row {
       display: flex; align-items: center; gap: 10px; margin: 10px 0 16px;
-      font-size: 16px;
+      font-size: 16px; flex-wrap: wrap;
     }
+    /* 全体予算に特別枠・舞い込み金を足した実際に使える総額。入力欄の値そのもの
+       は基本予算のまま触らない — タップしたときに自分が入れた数字と違うものが
+       出てくると混乱するため、合算後はこの隣の表示だけで見せる。 */
+    .budget-total-sum {
+      font-size: 20px; color: #fff; white-space: nowrap;
+      font-variant-numeric: tabular-nums; letter-spacing: 0.04em;
+    }
+    .budget-total-sum .arrow { color: #777; margin-right: 6px; }
     .budget-total-row label { color: #999; font-size: 14px; letter-spacing: 0.15em; }
     .budget-total-input {
       border: none; border-bottom: none; background: transparent;
@@ -322,6 +330,7 @@
     <div class="budget-total-row">
       <label for="total-budget-input">全体予算</label>
       <input type="number" id="total-budget-input" class="budget-total-input" step="1000" />
+      <span class="budget-total-sum" id="budget-total-sum"></span>
     </div>
 
     <div class="cards-row">
@@ -345,13 +354,6 @@
       <div class="card">
         <div class="card-label">カード 合計</div>
         <div class="card-value card" id="sum-card">¥0</div>
-      </div>
-    </div>
-
-    <div class="cards-row">
-      <div class="card">
-        <div class="card-label">予算 合計</div>
-        <div class="card-value total" id="budget-grand-total">¥0</div>
       </div>
     </div>
 
@@ -1633,9 +1635,9 @@ function renderSummary() {
   // 支出合計・残高ともに、現金・カードで確定した支出のみを対象にする。
   // 未選択(黒)のままの金額はまだ請求が来ていない予定額として扱い、含めない。
   const grand = cash + card;
-  // 予算合計はこのサイクルで使えるお金の総額。特別枠・舞い込み金は予算外で
-  // 入ってきたお金なので、全体予算に上乗せする。残りをこの値から引く形にして
-  // あるので、画面上でも「予算 合計 − 支出 合計 = 残り」がそのまま成り立つ。
+  // このサイクルで実際に使えるお金の総額。特別枠・舞い込み金は予算外で入って
+  // きたお金なので、全体予算に上乗せする。画面では独立したカードではなく、
+  // 一番上の全体予算の隣に合算後の数字として出している。
   const budgetGrandTotal = (cycle.totalBudget || 0) + (cycle.specialFund || 0) + (cycle.windfall || 0);
   const balance = budgetGrandTotal - grand;
   // 記入額合計は確定(現金・カード)未確定(未選択)を問わず、
@@ -1648,7 +1650,18 @@ function renderSummary() {
   balanceEl.textContent = formatCurrency(balance);
   balanceEl.className = 'card-value balance ' + (balance >= 0 ? 'positive' : 'negative');
 
-  document.getElementById('budget-grand-total').textContent = formatCurrency(budgetGrandTotal);
+  // 特別枠・舞い込み金が入っているときだけ、全体予算の隣に合算後の総額を出す。
+  // どちらも空のうちは入力欄の値と同じ数字を並べるだけになるので何も出さない。
+  const extraFunds = (cycle.specialFund || 0) + (cycle.windfall || 0);
+  const sumEl = document.getElementById('budget-total-sum');
+  sumEl.innerHTML = '';
+  if (extraFunds > 0) {
+    const arrow = document.createElement('span');
+    arrow.className = 'arrow';
+    arrow.textContent = '→';
+    sumEl.append(arrow, document.createTextNode(formatCurrency(budgetGrandTotal)));
+  }
+
   document.getElementById('entered-grand-total').textContent = formatCurrency(enteredGrandTotal);
   document.getElementById('grand-total').textContent = formatCurrency(grand);
   document.getElementById('total-budget-input').value = cycle.totalBudget || '';
