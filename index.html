@@ -304,6 +304,16 @@
       <input type="number" id="total-budget-input" class="budget-total-input" step="1000" />
     </div>
 
+    <div class="budget-total-row">
+      <label for="special-fund-input">特別枠</label>
+      <input type="number" id="special-fund-input" class="budget-total-input" step="1000" />
+    </div>
+
+    <div class="budget-total-row">
+      <label for="windfall-input">舞い込み金</label>
+      <input type="number" id="windfall-input" class="budget-total-input" step="1000" />
+    </div>
+
     <div class="cards-row">
       <div class="card">
         <div class="card-label">現金 合計</div>
@@ -764,6 +774,8 @@ function loadData() {
         const c = parsed.cycles[key];
         cycles[key] = {
           totalBudget: (typeof c.totalBudget === 'number') ? c.totalBudget : totalBudgetDefault,
+          specialFund: (typeof c.specialFund === 'number') ? c.specialFund : 0,
+          windfall: (typeof c.windfall === 'number') ? c.windfall : 0,
           items: Array.isArray(c.items) ? c.items.map(sanitizeCycleItem) : []
         };
       });
@@ -922,6 +934,8 @@ function ensureCycle(key) {
   if (!data.cycles[key]) {
     data.cycles[key] = {
       totalBudget: data.totalBudgetDefault,
+      specialFund: 0,
+      windfall: 0,
       items: cloneTemplateToCycleItems(data.template)
     };
     saveData();
@@ -1007,6 +1021,20 @@ document.getElementById('total-budget-input').addEventListener('change', (e) => 
   const val = parseFloat(e.target.value);
   const cycle = ensureCycle(currentCycle);
   cycle.totalBudget = (val > 0) ? val : 0;
+  saveData();
+  renderSummary();
+});
+document.getElementById('special-fund-input').addEventListener('change', (e) => {
+  const val = parseFloat(e.target.value);
+  const cycle = ensureCycle(currentCycle);
+  cycle.specialFund = (val > 0) ? val : 0;
+  saveData();
+  renderSummary();
+});
+document.getElementById('windfall-input').addEventListener('change', (e) => {
+  const val = parseFloat(e.target.value);
+  const cycle = ensureCycle(currentCycle);
+  cycle.windfall = (val > 0) ? val : 0;
   saveData();
   renderSummary();
 });
@@ -1547,7 +1575,8 @@ function renderSummary() {
   // 支出合計・残高ともに、現金・カードで確定した支出のみを対象にする。
   // 未選択(黒)のままの金額はまだ請求が来ていない予定額として扱い、含めない。
   const grand = cash + card;
-  const balance = (cycle.totalBudget || 0) - grand;
+  // 特別枠・舞い込み金は予算外で入ってきたお金として、全体予算に上乗せする。
+  const balance = (cycle.totalBudget || 0) + (cycle.specialFund || 0) + (cycle.windfall || 0) - grand;
   // 予算合計は確定(現金・カード)未確定(未選択)を問わず、入力された金額すべての合計。
   const budgetGrandTotal = sumBy(cycle.items, () => true);
 
@@ -1560,6 +1589,8 @@ function renderSummary() {
   document.getElementById('budget-grand-total').textContent = formatCurrency(budgetGrandTotal);
   document.getElementById('grand-total').textContent = formatCurrency(grand);
   document.getElementById('total-budget-input').value = cycle.totalBudget || '';
+  document.getElementById('special-fund-input').value = cycle.specialFund || '';
+  document.getElementById('windfall-input').value = cycle.windfall || '';
 }
 
 /* ── RENDER: SHEET (all) ── */
