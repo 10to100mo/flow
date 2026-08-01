@@ -101,22 +101,42 @@
     .cal-day.today { border: 1px solid #fff; border-radius: 4px; }
 
     .budget-total-row {
-      display: flex; align-items: center; gap: 10px; margin: 10px 0 16px;
-      font-size: 16px; flex-wrap: wrap;
+      /* column-gap を 0 にしてあるのは、ラベルと数字群の間に隙間があると
+         その半分だけ「ラベル右の空白」の中心と数字群の中心がずれるため。
+         余白は中央寄せで左右に均等につくので、隙間で稼ぐ必要がない。 */
+      display: flex; align-items: center; column-gap: 0; row-gap: 6px;
+      margin: 10px 0 16px; font-size: 16px; flex-wrap: wrap;
+    }
+    /* ラベルの右に残った幅をすべて受け取り、その中央に
+       「770000 → ¥838,000」をひとかたまりとして置く。 */
+    .budget-total-figures {
+      flex: 1 1 auto; min-width: 0;
+      display: flex; align-items: center; justify-content: center;
+      gap: 10px; flex-wrap: wrap;
     }
     /* 全体予算に特別枠・舞い込み金を足した実際に使える総額。入力欄の値そのもの
        は基本予算のまま触らない — タップしたときに自分が入れた数字と違うものが
-       出てくると混乱するため、合算後はこの隣の表示だけで見せる。 */
+       出てくると混乱するため、合算後はこの隣の表示だけで見せる。
+       input はブラウザ既定の font-weight:400 で描かれ、body の 300 より太い。
+       隣に並ぶ数字なので、こちらも 400 に揃えて同じ太さに見せる。 */
     .budget-total-sum {
-      font-size: 20px; color: #fff; white-space: nowrap;
+      font-size: 22px; font-weight: 400; color: #fff; white-space: nowrap;
       font-variant-numeric: tabular-nums; letter-spacing: 0.04em;
     }
-    .budget-total-sum .arrow { color: #777; margin-right: 6px; }
-    .budget-total-row label { color: #999; font-size: 14px; letter-spacing: 0.15em; }
+    /* Josefin Sans に矢印の字形はなく代替フォントで描かれるため、太さは
+       そちらに委ねる。数字が 400 なので、矢印だけ細く見えないよう太字に。 */
+    .budget-total-sum .arrow {
+      color: #777; margin-right: 8px; font-weight: 700;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    .budget-total-row label { color: #999; font-size: 14px; letter-spacing: 0.15em; flex: 0 0 auto; }
     .budget-total-input {
       border: none; border-bottom: none; background: transparent;
-      color: #fff; font-size: 22px; padding: 4px 2px; width: 150px; text-align: right; outline: none;
+      color: #fff; font-size: 22px; padding: 4px 2px; text-align: center; outline: none;
       font-variant-numeric: tabular-nums;
+      /* 幅は中身の桁数に合わせて JS が実測してセットする。固定幅のままだと、
+         中央寄せしたときに入力欄の余った余白ぶんだけ数字のかたまりが
+         片側にずれて見えてしまうため。 */
     }
 
     /* ── SUMMARY CARDS ── */
@@ -131,7 +151,10 @@
        brighter than everything around it. Toned to sit inside the same
        range as カード / 特別枠 / 舞い込み金 while staying recognisably magenta. */
     .card-value.cash { color: #f983f7; }
-    .card-value.card { color: #00ff7f; }
+    /* カードも現金と同じ理由で少し彩度を落としてある。#00ff7f は
+       彩度 0.235 と4色中で最も高く、現金を抑えたあとは今度はこちらが
+       突出して見えていた。現金と同水準(約0.20)まで下げて揃えている。 */
+    .card-value.card { color: #57f48c; }
     .card-value.special { color: #00bfff; }
     .card-value.windfall { color: #ffd23f; }
 
@@ -193,7 +216,7 @@
     .amount-chip.empty { color: #bbb; font-size: 17px; }
     .amount-chip.none { color: #fff; }
     .amount-chip.cash { color: #f983f7; }
-    .amount-chip.card { color: #00ff7f; }
+    .amount-chip.card { color: #57f48c; }
 
     .edit-form { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .edit-form input {
@@ -329,8 +352,10 @@
 
     <div class="budget-total-row">
       <label for="total-budget-input">全体予算</label>
-      <input type="number" id="total-budget-input" class="budget-total-input" step="1000" />
-      <span class="budget-total-sum" id="budget-total-sum"></span>
+      <div class="budget-total-figures">
+        <input type="number" id="total-budget-input" class="budget-total-input" step="1000" />
+        <span class="budget-total-sum" id="budget-total-sum"></span>
+      </div>
     </div>
 
     <div class="cards-row">
@@ -378,7 +403,7 @@
     <div class="legend">
       <span><span class="legend-swatch" style="background:#fff;"></span>未選択</span>
       <span><span class="legend-swatch" style="background:#f983f7;"></span>現金</span>
-      <span><span class="legend-swatch" style="background:#00ff7f;"></span>カード</span>
+      <span><span class="legend-swatch" style="background:#57f48c;"></span>カード</span>
     </div>
 
     <div id="item-list"></div>
@@ -1068,6 +1093,12 @@ document.getElementById('total-budget-input').addEventListener('change', (e) => 
   saveData();
   renderSummary();
 });
+// 打っている最中も入力欄の幅が桁数に追従するように。
+document.getElementById('total-budget-input').addEventListener('input', sizeBudgetInput);
+// Josefin Sans は後から読み込まれる。既定フォントで測った幅のままだとズレるので、
+// 実際に使うフォントが揃った時点で測り直す。
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(sizeBudgetInput);
+
 // 特別枠・舞い込み金. These bind on 'input' rather than 'change' so the 残り
 // figure moves while the number is still being typed — 'change' only fires
 // once the field loses focus, which on a phone can mean tapping away and
@@ -1655,6 +1686,9 @@ function renderSummary() {
   const extraFunds = (cycle.specialFund || 0) + (cycle.windfall || 0);
   const sumEl = document.getElementById('budget-total-sum');
   sumEl.innerHTML = '';
+  // 幅0で残すと flex の gap だけが効いてしまい、入力欄ひとつのときに
+  // その半分だけ中央からずれる。出さないときは要素ごと外す。
+  sumEl.style.display = extraFunds > 0 ? '' : 'none';
   if (extraFunds > 0) {
     const arrow = document.createElement('span');
     arrow.className = 'arrow';
@@ -1665,8 +1699,29 @@ function renderSummary() {
   document.getElementById('entered-grand-total').textContent = formatCurrency(enteredGrandTotal);
   document.getElementById('grand-total').textContent = formatCurrency(grand);
   document.getElementById('total-budget-input').value = cycle.totalBudget || '';
+  sizeBudgetInput();
   setFundInputValue('special-fund-input', cycle.specialFund);
   setFundInputValue('windfall-input', cycle.windfall);
+}
+
+// 全体予算の入力欄を中身の幅ぴったりに縮める。固定幅だと、中央寄せしたときに
+// 使われていない余白のぶんだけ「770000 → ¥838,000」が片側にずれて見えるため、
+// 実際に描画される文字幅を隠し要素で測ってからその幅を与えている。
+let budgetMeasureEl = null;
+function sizeBudgetInput() {
+  const el = document.getElementById('total-budget-input');
+  if (!budgetMeasureEl) {
+    budgetMeasureEl = document.createElement('span');
+    budgetMeasureEl.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;top:-9999px;left:-9999px;';
+    document.body.appendChild(budgetMeasureEl);
+  }
+  const cs = getComputedStyle(el);
+  ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'fontVariantNumeric'].forEach(prop => {
+    budgetMeasureEl.style[prop] = cs[prop];
+  });
+  budgetMeasureEl.textContent = el.value || '0';
+  // 左右の padding(2px ずつ)ぶんと、実測とレンダリングのわずかな差を吸収する余裕。
+  el.style.width = Math.ceil(budgetMeasureEl.getBoundingClientRect().width) + 10 + 'px';
 }
 
 function setFundInputValue(id, value) {
