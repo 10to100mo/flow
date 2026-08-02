@@ -146,17 +146,13 @@
     .card-value { font-size: 22px; font-variant-numeric: tabular-nums; }
     .card-value.cash, .card-value.card,
     .card-value.special, .card-value.windfall { border: 1px solid #262626; padding: 10px 12px; }
-    /* 現金 was pure magenta (#ff00ff), whose chroma is ~1.8x that of the
-       other three accents — on an OLED phone it bloomed and read as
-       brighter than everything around it. Toned to sit inside the same
-       range as カード / 特別枠 / 舞い込み金 while staying recognisably magenta. */
-    .card-value.cash { color: #f983f7; }
-    /* カードも現金と同じ理由で少し彩度を落としてある。#00ff7f は
-       彩度 0.235 と4色中で最も高く、現金を抑えたあとは今度はこちらが
-       突出して見えていた。現金と同水準(約0.20)まで下げて揃えている。 */
-    .card-value.card { color: #57f48c; }
-    .card-value.special { color: #00bfff; }
-    .card-value.windfall { color: #ffd23f; }
+    /* 現金・カードはこの2色だけが色を持つ。特別枠・舞い込み金にも色を振って
+       いた頃は、彩度の高い4色が並んで現金とカードが順番に浮いて見えたため
+       一度トーンを落としていたが、この2つを白に戻したことで元の鮮やかな
+       ネオンで問題なくなった。 */
+    .card-value.cash { color: #ff00ff; }
+    .card-value.card { color: #00ff7f; }
+    .card-value.special, .card-value.windfall { color: #fff; }
 
     /* Editable cards (特別枠・舞い込み金) — same look as the read-only
        総額 cards above, so the sheet reads as one row of figures rather
@@ -215,8 +211,8 @@
     }
     .amount-chip.empty { color: #bbb; font-size: 17px; }
     .amount-chip.none { color: #fff; }
-    .amount-chip.cash { color: #f983f7; }
-    .amount-chip.card { color: #57f48c; }
+    .amount-chip.cash { color: #ff00ff; }
+    .amount-chip.card { color: #00ff7f; }
 
     .edit-form { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .edit-form input {
@@ -402,8 +398,8 @@
 
     <div class="legend">
       <span><span class="legend-swatch" style="background:#fff;"></span>未選択</span>
-      <span><span class="legend-swatch" style="background:#f983f7;"></span>現金</span>
-      <span><span class="legend-swatch" style="background:#57f48c;"></span>カード</span>
+      <span><span class="legend-swatch" style="background:#ff00ff;"></span>現金</span>
+      <span><span class="legend-swatch" style="background:#00ff7f;"></span>カード</span>
     </div>
 
     <div id="item-list"></div>
