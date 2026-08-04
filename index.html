@@ -472,7 +472,8 @@ function defaultTemplate() {
       { id: uid(), name: 'AppleCare', defaultAmount: 900 },
       { id: uid(), name: '礼のiPad', defaultAmount: 650 },
       { id: uid(), name: 'Apple iCloud', defaultAmount: 1500 },
-      { id: uid(), name: 'Claude', defaultAmount: 3000 }
+      { id: uid(), name: 'Claude', defaultAmount: 3000 },
+      { id: uid(), name: 'T📱AppleCare', defaultAmount: 1350 }
     ]},
     { id: uid(), name: 'REI', defaultAmount: null, children: [
       { id: uid(), name: 'ART', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
@@ -872,6 +873,35 @@ if (!data.schemaFlags.akoAdded) {
     }));
   });
   data.schemaFlags.akoAdded = true;
+}
+// サブスクに T📱AppleCare(毎月1,350円)を追加。サブスクの子は defaultAmount を
+// 持つ固定費で、新しいサイクルを開くたびにその額が自動で入る仕組みなので、
+// これで毎月ぶんは自動的に計上される。
+// 既に作られているサイクルにも行そのものは足すが、金額を入れるのは今表示中の
+// サイクルだけ。過去のサイクルにさかのぼって 1,350円 を計上すると、実際には
+// 払っていない月の記録を書き換えてしまうため。
+if (!data.schemaFlags.tAppleCareAdded) {
+  const T_APPLECARE = 'T📱AppleCare';
+  const T_APPLECARE_AMOUNT = 1350;
+  const tmplSub = data.template.find(t => t.name === 'サブスク');
+  if (tmplSub && Array.isArray(tmplSub.children)) {
+    const newId = uid();
+    if (!tmplSub.children.some(c => c.name === T_APPLECARE)) {
+      tmplSub.children.push({ id: newId, name: T_APPLECARE, defaultAmount: T_APPLECARE_AMOUNT });
+    }
+    const thisCycleKey = cycleKeyForDate(new Date());
+    Object.keys(data.cycles).forEach(key => {
+      const sub = data.cycles[key].items.find(i => i.name === 'サブスク');
+      if (!sub || !Array.isArray(sub.children)) return;
+      if (sub.children.some(c => c.name === T_APPLECARE)) return;
+      sub.children.push({
+        id: newId, name: T_APPLECARE,
+        amount: (key === thisCycleKey) ? T_APPLECARE_AMOUNT : null,
+        payment: 'none', date: null, place: ''
+      });
+    });
+  }
+  data.schemaFlags.tAppleCareAdded = true;
 }
 saveData();
 
