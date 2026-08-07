@@ -489,7 +489,8 @@ function defaultTemplate() {
       { id: uid(), name: '美容代', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
       { id: uid(), name: '病院', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
       { id: uid(), name: '整体', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
-      { id: uid(), name: '交通費', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] }
+      { id: uid(), name: '交通費', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
+      { id: uid(), name: 'その他', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] }
     ]},
     // AKO はこの子にかかったお金をそのまま並べていくだけなので、
     // 食費・立替分と同じ、日付・場所・金額を何度でも足せる形にしてある。
@@ -902,6 +903,27 @@ if (!data.schemaFlags.tAppleCareAdded) {
     });
   }
   data.schemaFlags.tAppleCareAdded = true;
+}
+// TOMO に その他 を追加。兄弟の 美容院・病院 などと同じ、日付・場所・金額を
+// 何度でも足せる形。どこにも当てはまらない分の受け皿なので末尾に置く。
+if (!data.schemaFlags.tomoSonotaAdded) {
+  const tmplTomo = data.template.find(t => t.name === 'TOMO');
+  if (tmplTomo && Array.isArray(tmplTomo.children)) {
+    const newId = uid();
+    if (!tmplTomo.children.some(c => c.name === 'その他')) {
+      tmplTomo.children.push({ id: newId, name: 'その他', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] });
+    }
+    Object.values(data.cycles).forEach(cycle => {
+      const tomo = cycle.items.find(i => i.name === 'TOMO');
+      if (!tomo || !Array.isArray(tomo.children)) return;
+      if (tomo.children.some(c => c.name === 'その他')) return;
+      tomo.children.push({
+        id: newId, name: 'その他', amount: null, payment: 'none', date: null, place: '',
+        noChildAdd: true, autoEntries: true, children: []
+      });
+    });
+  }
+  data.schemaFlags.tomoSonotaAdded = true;
 }
 saveData();
 
