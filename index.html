@@ -144,14 +144,15 @@
     .card { flex: 1 1 130px; border: 1px solid #262626; padding: 10px 12px; }
     .card-label { font-size: 12px; letter-spacing: 0.15em; color: #999; margin-bottom: 4px; }
     .card-value { font-size: 22px; font-variant-numeric: tabular-nums; }
-    .card-value.cash, .card-value.card,
+    .card-value.cash, .card-value.card, .card-value.savings,
     .card-value.special, .card-value.windfall { border: 1px solid #262626; padding: 10px 12px; }
-    /* 現金・カードはこの2色だけが色を持つ。特別枠・舞い込み金にも色を振って
-       いた頃は、彩度の高い4色が並んで現金とカードが順番に浮いて見えたため
-       一度トーンを落としていたが、この2つを白に戻したことで元の鮮やかな
-       ネオンで問題なくなった。 */
+    /* 色を持つのは支払い方法(現金・カード・貯金)の3つだけ。特別枠・舞い込み金
+       にも色を振っていた頃は、彩度の高い色が並んで現金とカードが順番に浮いて
+       見えたため一度トーンを落としていたが、その2つを白に戻したことで元の
+       鮮やかなネオンで問題なくなった。貯金の青は金額チップの色と揃えてある。 */
     .card-value.cash { color: #ff00ff; }
     .card-value.card { color: #00ff7f; }
+    .card-value.savings { color: #00bfff; }
     .card-value.special, .card-value.windfall { color: #fff; }
 
     /* Editable cards (特別枠・舞い込み金) — same look as the read-only
@@ -213,6 +214,7 @@
     .amount-chip.none { color: #fff; }
     .amount-chip.cash { color: #ff00ff; }
     .amount-chip.card { color: #00ff7f; }
+    .amount-chip.savings { color: #00bfff; }
 
     .edit-form { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .edit-form input {
@@ -391,6 +393,13 @@
 
     <div class="cards-row">
       <div class="card">
+        <div class="card-label">貯金</div>
+        <div class="card-value savings" id="sum-savings">¥0</div>
+      </div>
+    </div>
+
+    <div class="cards-row">
+      <div class="card">
         <div class="card-label">残り</div>
         <div class="card-value balance" id="sum-balance">¥0</div>
       </div>
@@ -400,6 +409,7 @@
       <span><span class="legend-swatch" style="background:#fff;"></span>未選択</span>
       <span><span class="legend-swatch" style="background:#ff00ff;"></span>現金</span>
       <span><span class="legend-swatch" style="background:#00ff7f;"></span>カード</span>
+      <span><span class="legend-swatch" style="background:#00bfff;"></span>貯金</span>
     </div>
 
     <div id="item-list"></div>
@@ -481,7 +491,8 @@ function defaultTemplate() {
       { id: uid(), name: '小遣い', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
       { id: uid(), name: '美容院', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
       { id: uid(), name: '病院', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
-      { id: uid(), name: '交通費', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] }
+      { id: uid(), name: '交通費', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
+      { id: uid(), name: '被服費', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] }
     ]},
     { id: uid(), name: 'TOMO', defaultAmount: null, children: [
       { id: uid(), name: 'ART', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
@@ -528,7 +539,9 @@ function sanitizeCycleItem(raw) {
     id: raw.id || uid(),
     name: raw.name || '',
     amount: (typeof raw.amount === 'number') ? raw.amount : null,
-    payment: ['cash', 'card'].includes(raw.payment) ? raw.payment : 'none',
+    // savings は「現金で貯金にまわした分」。支出ではないので支出合計には
+    // 入れないが、使えるお金からは出ていくので残りからは引く。
+    payment: ['cash', 'card', 'savings'].includes(raw.payment) ? raw.payment : 'none',
     date: (typeof raw.date === 'string' && raw.date) ? raw.date : null,
     place: (typeof raw.place === 'string') ? raw.place : '',
     noChildAdd: !!raw.noChildAdd,
@@ -924,6 +937,27 @@ if (!data.schemaFlags.tomoSonotaAdded) {
     });
   }
   data.schemaFlags.tomoSonotaAdded = true;
+}
+// REI に 被服費 を追加。兄弟の 美容院・病院 などと同じ、日付・場所・金額を
+// 何度でも足せる形。
+if (!data.schemaFlags.reiHifukuhiAdded) {
+  const tmplRei = data.template.find(t => t.name === 'REI');
+  if (tmplRei && Array.isArray(tmplRei.children)) {
+    const newId = uid();
+    if (!tmplRei.children.some(c => c.name === '被服費')) {
+      tmplRei.children.push({ id: newId, name: '被服費', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] });
+    }
+    Object.values(data.cycles).forEach(cycle => {
+      const rei = cycle.items.find(i => i.name === 'REI');
+      if (!rei || !Array.isArray(rei.children)) return;
+      if (rei.children.some(c => c.name === '被服費')) return;
+      rei.children.push({
+        id: newId, name: '被服費', amount: null, payment: 'none', date: null, place: '',
+        noChildAdd: true, autoEntries: true, children: []
+      });
+    });
+  }
+  data.schemaFlags.reiHifukuhiAdded = true;
 }
 saveData();
 
@@ -1464,9 +1498,9 @@ function buildItemRow(row, depth, siblingArray, forceBlankName) {
     amountBtn.type = 'button';
     amountBtn.className = 'amount-chip ' + row.payment + (row.amount === null ? ' empty' : '');
     amountBtn.textContent = row.amount === null ? '–' : formatCurrency(row.amount);
-    amountBtn.title = 'クリックで 未選択→現金→カード を切り替え';
+    amountBtn.title = 'クリックで 未選択→現金→カード→貯金 を切り替え';
     amountBtn.addEventListener('click', () => {
-      const order = ['none', 'cash', 'card'];
+      const order = ['none', 'cash', 'card', 'savings'];
       row.payment = order[(order.indexOf(row.payment) + 1) % order.length];
       saveData();
       renderSheet();
@@ -1777,6 +1811,10 @@ function renderSummary() {
   const cycle = ensureCycle(currentCycle);
   const cash = sumBy(cycle.items, r => r.payment === 'cash');
   const card = sumBy(cycle.items, r => r.payment === 'card');
+  // 貯金(青)は現金から貯金にまわした分。使ったわけではないので支出合計には
+  // 入れないが、手元から出ていくお金なので残りからは引く。現金とは別の状態
+  // なので、現金合計と二重に数えられることはない。
+  const savings = sumBy(cycle.items, r => r.payment === 'savings');
   // 支出合計・残高ともに、現金・カードで確定した支出のみを対象にする。
   // 未選択(黒)のままの金額はまだ請求が来ていない予定額として扱い、含めない。
   const grand = cash + card;
@@ -1784,13 +1822,14 @@ function renderSummary() {
   // きたお金なので、全体予算に上乗せする。画面では独立したカードではなく、
   // 一番上の全体予算の隣に合算後の数字として出している。
   const budgetGrandTotal = (cycle.totalBudget || 0) + (cycle.specialFund || 0) + (cycle.windfall || 0);
-  const balance = budgetGrandTotal - grand;
+  const balance = budgetGrandTotal - grand - savings;
   // 記入額合計は確定(現金・カード)未確定(未選択)を問わず、
   // 各項目に入力された金額すべての合計。支出合計との差が未確定分にあたる。
   const enteredGrandTotal = sumBy(cycle.items, () => true);
 
   document.getElementById('sum-cash').textContent = formatCurrency(cash);
   document.getElementById('sum-card').textContent = formatCurrency(card);
+  document.getElementById('sum-savings').textContent = formatCurrency(savings);
   const balanceEl = document.getElementById('sum-balance');
   balanceEl.textContent = formatCurrency(balance);
   balanceEl.className = 'card-value balance ' + (balance >= 0 ? 'positive' : 'negative');
