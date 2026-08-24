@@ -483,7 +483,8 @@ function defaultTemplate() {
       { id: uid(), name: '礼のiPad', defaultAmount: 650 },
       { id: uid(), name: 'Apple iCloud', defaultAmount: 1500 },
       { id: uid(), name: 'Claude', defaultAmount: 3000 },
-      { id: uid(), name: 'T📱AppleCare', defaultAmount: 1350 }
+      { id: uid(), name: 'T📱AppleCare', defaultAmount: 1350 },
+      { id: uid(), name: 'NHK', defaultAmount: 2200 }
     ]},
     { id: uid(), name: 'REI', defaultAmount: null, children: [
       { id: uid(), name: 'ART', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
@@ -958,6 +959,32 @@ if (!data.schemaFlags.reiHifukuhiAdded) {
     });
   }
   data.schemaFlags.reiHifukuhiAdded = true;
+}
+// サブスクに NHK(2,200円)を追加。他のサブスクと同じく defaultAmount を持つので、
+// 新しいサイクルを開くたびにその額が自動で入る。
+// 既に作られているサイクルにも行そのものは足すが、金額を入れるのは今表示中の
+// サイクルだけ。過去のサイクルにさかのぼって計上すると記録を書き換えてしまう。
+if (!data.schemaFlags.nhkAdded) {
+  const NHK_AMOUNT = 2200;
+  const tmplSub = data.template.find(t => t.name === 'サブスク');
+  if (tmplSub && Array.isArray(tmplSub.children)) {
+    const newId = uid();
+    if (!tmplSub.children.some(c => c.name === 'NHK')) {
+      tmplSub.children.push({ id: newId, name: 'NHK', defaultAmount: NHK_AMOUNT });
+    }
+    const thisCycleKey = cycleKeyForDate(new Date());
+    Object.keys(data.cycles).forEach(key => {
+      const sub = data.cycles[key].items.find(i => i.name === 'サブスク');
+      if (!sub || !Array.isArray(sub.children)) return;
+      if (sub.children.some(c => c.name === 'NHK')) return;
+      sub.children.push({
+        id: newId, name: 'NHK',
+        amount: (key === thisCycleKey) ? NHK_AMOUNT : null,
+        payment: 'none', date: null, place: ''
+      });
+    });
+  }
+  data.schemaFlags.nhkAdded = true;
 }
 saveData();
 
