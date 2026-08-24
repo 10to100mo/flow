@@ -272,7 +272,10 @@
       padding: 0 0 4px 24px; font-size: 13px; color: #aaa; letter-spacing: 0.1em;
     }
 
-    .add-child-row { padding: 0 0 4px 24px; }
+    .add-child-row {
+      padding: 0 0 4px 24px;
+      display: flex; gap: 20px; flex-wrap: wrap;
+    }
     .add-row-btn {
       background: none; border: none; font-size: 14px; letter-spacing: 0.1em;
       color: #999; padding: 2px 0; transition: color 0.15s;
@@ -474,7 +477,8 @@ function defaultTemplate() {
       { id: uid(), name: '携帯代', defaultAmount: null },
       { id: uid(), name: 'ひかり通信', defaultAmount: null }
     ]},
-    { id: uid(), name: 'サブスク', defaultAmount: null, children: [
+    // oneOffAdd: サブスクだけ「毎月」と「今月だけ」の2つの追加ボタンを出す。
+    { id: uid(), name: 'サブスク', defaultAmount: null, oneOffAdd: true, children: [
       { id: uid(), name: 'YouTubeファミリー', defaultAmount: 2280 },
       { id: uid(), name: 'Netflix', defaultAmount: 2290 },
       { id: uid(), name: 'Amazonプライム', defaultAmount: null },
@@ -530,7 +534,7 @@ function defaultData() {
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
 function sanitizeTemplateItem(raw) {
-  const item = { id: raw.id || uid(), name: raw.name || '', defaultAmount: (typeof raw.defaultAmount === 'number') ? raw.defaultAmount : null, noChildAdd: !!raw.noChildAdd, autoEntries: !!raw.autoEntries, repeatable: !!raw.repeatable };
+  const item = { id: raw.id || uid(), name: raw.name || '', defaultAmount: (typeof raw.defaultAmount === 'number') ? raw.defaultAmount : null, noChildAdd: !!raw.noChildAdd, autoEntries: !!raw.autoEntries, repeatable: !!raw.repeatable, oneOffAdd: !!raw.oneOffAdd };
   if (Array.isArray(raw.children)) item.children = raw.children.map(sanitizeTemplateItem);
   return item;
 }
@@ -547,7 +551,8 @@ function sanitizeCycleItem(raw) {
     place: (typeof raw.place === 'string') ? raw.place : '',
     noChildAdd: !!raw.noChildAdd,
     autoEntries: !!raw.autoEntries,
-    repeatable: !!raw.repeatable
+    repeatable: !!raw.repeatable,
+    oneOffAdd: !!raw.oneOffAdd
   };
   if (Array.isArray(raw.children)) item.children = raw.children.map(sanitizeCycleItem);
   return item;
@@ -761,8 +766,14 @@ function migrateCycleStructures(items) {
 migrateTemplateStructures(data.template);
 revertTemplateStructures(data.template);
 // サブスク used to block adding new named subscriptions — now allowed.
+// oneOffAdd で「毎月」と「今月だけ」の2つの追加ボタンを出す。どちらも
+// 見た目の挙動を決めるだけのフラグなので、schemaFlags で一度きりにはせず
+// 毎回コードから立て直す(コード側を直せばすぐ反映される)。
 const subscriptionTemplate = data.template.find(t => t.name === 'サブスク');
-if (subscriptionTemplate) subscriptionTemplate.noChildAdd = false;
+if (subscriptionTemplate) {
+  subscriptionTemplate.noChildAdd = false;
+  subscriptionTemplate.oneOffAdd = true;
+}
 // REI/TOMO used to block adding new named sub-items — now allowed.
 ['REI', 'TOMO'].forEach(name => {
   const t = data.template.find(x => x.name === name);
@@ -1134,7 +1145,7 @@ let currentCycle = cycleKeyForDate(new Date());
 
 function cloneTemplateToCycleItems(template) {
   return template.map(t => {
-    const item = { id: t.id, name: t.name, amount: t.defaultAmount, payment: 'none', date: null, place: '', noChildAdd: !!t.noChildAdd, autoEntries: !!t.autoEntries, repeatable: !!t.repeatable };
+    const item = { id: t.id, name: t.name, amount: t.defaultAmount, payment: 'none', date: null, place: '', noChildAdd: !!t.noChildAdd, autoEntries: !!t.autoEntries, repeatable: !!t.repeatable, oneOffAdd: !!t.oneOffAdd };
     if (Array.isArray(t.children)) item.children = cloneTemplateToCycleItems(t.children);
     return item;
   });
@@ -1162,6 +1173,7 @@ function syncStructuralFlags(items, templateItems) {
     item.noChildAdd = !!t.noChildAdd;
     item.autoEntries = !!t.autoEntries;
     item.repeatable = !!t.repeatable;
+    item.oneOffAdd = !!t.oneOffAdd;
     // Non-destructive: only initialize an empty children array when the
     // item doesn't already have one (a group with real children is never
     // touched here).
@@ -1423,29 +1435,56 @@ function renderGroupBody(container, item, depth) {
   subtotal.textContent = '小計 ' + formatCurrency(groupTotal(item));
   container.appendChild(subtotal);
 
-  if (!collapsed && !item.noChildAdd) {
+  // oneOffAdd が立っている親(サブスク)は「毎月」と「今月だけ」の2つを出す。
+  // それ以外の親はこれまで通り ＋ ひとつ。
+  if (!collapsed && (!item.noChildAdd || item.oneOffAdd)) {
     const addChildRow = document.createElement('div');
     addChildRow.className = 'add-child-row';
-    const addChildBtn = document.createElement('button');
-    addChildBtn.type = 'button';
-    addChildBtn.className = 'add-row-btn';
-    addChildBtn.textContent = '＋';
-    addChildBtn.title = '小項目を追加';
-    addChildBtn.addEventListener('click', () => {
-      const name = prompt('新しい小項目名を入力してください');
-      if (!name || !name.trim()) return;
-      const trimmed = name.trim();
-      const newChildId = uid();
-      if (!Array.isArray(item.children)) item.children = [];
-      // Match the auto-growing style of existing siblings (e.g. REI/TOMOの
-      // 定期・小遣い) so a newly added category behaves consistently with
-      // the ones already there, instead of always defaulting to a plain
-      // single-amount leaf.
-      const matchesAutoEntries = item.children.some(c => c.autoEntries);
-      item.children.push(matchesAutoEntries
-        ? { id: newChildId, name: trimmed, amount: null, payment: 'none', date: null, place: '', noChildAdd: true, autoEntries: true, children: [] }
-        : { id: newChildId, name: trimmed, amount: null, payment: 'none', date: null, place: '' });
+    if (!item.noChildAdd) {
+      addChildRow.appendChild(buildAddChildBtn(item, {
+        label: item.oneOffAdd ? '＋ 毎月' : '＋',
+        title: item.oneOffAdd ? '毎月かかる項目として追加(翌月以降も出る)' : '小項目を追加',
+        promptText: item.oneOffAdd ? '毎月かかるサブスク名を入力してください' : '新しい小項目名を入力してください',
+        persist: true
+      }));
+    }
+    if (item.oneOffAdd) {
+      addChildRow.appendChild(buildAddChildBtn(item, {
+        label: '＋ 今月だけ',
+        title: '今月発生した分として追加(翌月には出ない)',
+        promptText: '今月だけのサブスク名を入力してください',
+        persist: false
+      }));
+    }
+    container.appendChild(addChildRow);
+  }
+}
 
+// persist:true はテンプレートにも入れるので翌月以降のサイクルにも出る。
+// persist:false は表示中のサイクルにしか入れないので、その月かぎりで終わる
+// (翌月は cloneTemplateToCycleItems がテンプレートから作るため出てこない)。
+function buildAddChildBtn(item, { label, title, promptText, persist }) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'add-row-btn';
+  btn.textContent = label;
+  btn.title = title;
+  btn.addEventListener('click', () => {
+    const name = prompt(promptText);
+    if (!name || !name.trim()) return;
+    const trimmed = name.trim();
+    const newChildId = uid();
+    if (!Array.isArray(item.children)) item.children = [];
+    // Match the auto-growing style of existing siblings (e.g. REI/TOMOの
+    // 定期・小遣い) so a newly added category behaves consistently with
+    // the ones already there, instead of always defaulting to a plain
+    // single-amount leaf.
+    const matchesAutoEntries = item.children.some(c => c.autoEntries);
+    item.children.push(matchesAutoEntries
+      ? { id: newChildId, name: trimmed, amount: null, payment: 'none', date: null, place: '', noChildAdd: true, autoEntries: true, children: [] }
+      : { id: newChildId, name: trimmed, amount: null, payment: 'none', date: null, place: '' });
+
+    if (persist) {
       const tmplItem = data.template.find(t => t.id === item.id);
       if (tmplItem) {
         if (!Array.isArray(tmplItem.children)) tmplItem.children = [];
@@ -1453,12 +1492,11 @@ function renderGroupBody(container, item, depth) {
           ? { id: newChildId, name: trimmed, defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] }
           : { id: newChildId, name: trimmed, defaultAmount: null });
       }
-      saveData();
-      renderSheet();
-    });
-    addChildRow.appendChild(addChildBtn);
-    container.appendChild(addChildRow);
-  }
+    }
+    saveData();
+    renderSheet();
+  });
+  return btn;
 }
 
 function buildItemRow(row, depth, siblingArray, forceBlankName) {
