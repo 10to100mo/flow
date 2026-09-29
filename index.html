@@ -272,6 +272,16 @@
       padding: 0 0 4px 24px; font-size: 13px; color: #aaa; letter-spacing: 0.1em;
     }
 
+    /* 週ごとの合計(食費)。小計より一段控えめにして、内訳であることが
+       ひと目で分かるようにしてある。 */
+    .week-totals { padding: 2px 0 4px 24px; }
+    .week-row {
+      display: flex; justify-content: space-between; align-items: baseline;
+      max-width: 260px; padding: 1px 0;
+      font-size: 12px; color: #777; letter-spacing: 0.08em;
+    }
+    .week-row span + span { color: #aaa; font-variant-numeric: tabular-nums; }
+
     .add-child-row {
       padding: 0 0 4px 24px;
       display: flex; gap: 20px; flex-wrap: wrap;
@@ -466,7 +476,7 @@ function defaultTemplate() {
   return [
     { id: uid(), name: '家賃', defaultAmount: 250500, noChildAdd: true },
     { id: uid(), name: '讓一振込', defaultAmount: 150000, noChildAdd: true },
-    { id: uid(), name: '食費', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
+    { id: uid(), name: '食費', defaultAmount: null, noChildAdd: true, autoEntries: true, weeklyTotals: true, children: [] },
     { id: uid(), name: '雑費', defaultAmount: null, noChildAdd: true, autoEntries: true, children: [] },
     { id: uid(), name: '水道光熱費', defaultAmount: null, children: [
       { id: uid(), name: '水道代', defaultAmount: null },
@@ -534,7 +544,7 @@ function defaultData() {
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
 function sanitizeTemplateItem(raw) {
-  const item = { id: raw.id || uid(), name: raw.name || '', defaultAmount: (typeof raw.defaultAmount === 'number') ? raw.defaultAmount : null, noChildAdd: !!raw.noChildAdd, autoEntries: !!raw.autoEntries, repeatable: !!raw.repeatable, oneOffAdd: !!raw.oneOffAdd };
+  const item = { id: raw.id || uid(), name: raw.name || '', defaultAmount: (typeof raw.defaultAmount === 'number') ? raw.defaultAmount : null, noChildAdd: !!raw.noChildAdd, autoEntries: !!raw.autoEntries, repeatable: !!raw.repeatable, oneOffAdd: !!raw.oneOffAdd, weeklyTotals: !!raw.weeklyTotals };
   if (Array.isArray(raw.children)) item.children = raw.children.map(sanitizeTemplateItem);
   return item;
 }
@@ -552,7 +562,8 @@ function sanitizeCycleItem(raw) {
     noChildAdd: !!raw.noChildAdd,
     autoEntries: !!raw.autoEntries,
     repeatable: !!raw.repeatable,
-    oneOffAdd: !!raw.oneOffAdd
+    oneOffAdd: !!raw.oneOffAdd,
+    weeklyTotals: !!raw.weeklyTotals
   };
   if (Array.isArray(raw.children)) item.children = raw.children.map(sanitizeCycleItem);
   return item;
@@ -774,6 +785,10 @@ if (subscriptionTemplate) {
   subscriptionTemplate.noChildAdd = false;
   subscriptionTemplate.oneOffAdd = true;
 }
+// 食費だけ、小計の上に週ごとの合計を出す。これも見た目のフラグなので毎回
+// コードから立て直す(syncStructuralFlags が各サイクルの項目にも配る)。
+const foodTemplate = data.template.find(t => t.name === '食費');
+if (foodTemplate) foodTemplate.weeklyTotals = true;
 // REI/TOMO used to block adding new named sub-items — now allowed.
 ['REI', 'TOMO'].forEach(name => {
   const t = data.template.find(x => x.name === name);
@@ -1145,10 +1160,61 @@ let currentCycle = cycleKeyForDate(new Date());
 
 function cloneTemplateToCycleItems(template) {
   return template.map(t => {
-    const item = { id: t.id, name: t.name, amount: t.defaultAmount, payment: 'none', date: null, place: '', noChildAdd: !!t.noChildAdd, autoEntries: !!t.autoEntries, repeatable: !!t.repeatable, oneOffAdd: !!t.oneOffAdd };
+    const item = { id: t.id, name: t.name, amount: t.defaultAmount, payment: 'none', date: null, place: '', noChildAdd: !!t.noChildAdd, autoEntries: !!t.autoEntries, repeatable: !!t.repeatable, oneOffAdd: !!t.oneOffAdd, weeklyTotals: !!t.weeklyTotals };
     if (Array.isArray(t.children)) item.children = cloneTemplateToCycleItems(t.children);
     return item;
   });
+}
+
+// サイクル(16日〜翌15日)を、開始日から7日ずつに区切った週。最後の週だけは
+// サイクルの終わりで切れるので、7日に満たないことがある。
+function cycleWeeks(key) {
+  const [y, m] = key.split('-').map(Number);
+  let ey = y, em = m + 1;
+  if (em > 12) { em = 1; ey += 1; }
+  const end = new Date(ey, em - 1, 15);
+  const weeks = [];
+  const from = new Date(y, m - 1, 16);
+  while (from <= end) {
+    const to = new Date(from);
+    to.setDate(to.getDate() + 6);
+    weeks.push({ from: new Date(from), to: (to > end ? new Date(end) : to), total: 0 });
+    from.setDate(from.getDate() + 7);
+  }
+  return weeks;
+}
+
+// 記入された日付は "8/2" のように年がない。サイクルは2つの月にまたがるので、
+// 月がそのどちらに一致するかで年を決める。旧形式の "2026-08-02" も読む。
+function parseEntryDate(value, key) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(value.trim());
+  if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+  const md = /^(\d{1,2})\/(\d{1,2})$/.exec(value.trim());
+  if (!md) return null;
+  const mo = Number(md[1]), d = Number(md[2]);
+  const [y, m] = key.split('-').map(Number);
+  let ey = y, em = m + 1;
+  if (em > 12) { em = 1; ey += 1; }
+  if (mo === m) return new Date(y, mo - 1, d);
+  if (mo === em) return new Date(ey, mo - 1, d);
+  return null;
+}
+
+// どの週にも入らなかった分(日付が空、または読めない/サイクル外の日付)は
+// other にまとめる。週の合計 + other が必ず小計と一致するようにしてある。
+function weeklyBreakdown(item, key) {
+  const weeks = cycleWeeks(key);
+  let other = 0;
+  walkRows([item], row => {
+    if (Array.isArray(row.children)) return;
+    if (typeof row.amount !== 'number') return;
+    const d = parseEntryDate(row.date, key);
+    const week = d && weeks.find(w => d >= w.from && d <= w.to);
+    if (week) week.total += row.amount;
+    else other += row.amount;
+  });
+  return { weeks, other };
 }
 
 function formatDateShort(value) {
@@ -1174,6 +1240,7 @@ function syncStructuralFlags(items, templateItems) {
     item.autoEntries = !!t.autoEntries;
     item.repeatable = !!t.repeatable;
     item.oneOffAdd = !!t.oneOffAdd;
+    item.weeklyTotals = !!t.weeklyTotals;
     // Non-destructive: only initialize an empty children array when the
     // item doesn't already have one (a group with real children is never
     // touched here).
@@ -1428,6 +1495,30 @@ function renderGroupBody(container, item, depth) {
       container.appendChild(buildItemRow(child, depth + 1, item.children, !!item.autoEntries));
       renderGroupBody(container, child, depth + 1);
     });
+  }
+
+  // 週ごとの合計(今は食費だけ)。小計の直前に、サイクルを16日から7日ずつ
+  // 区切った週の内訳として出す。
+  if (item.weeklyTotals && Array.isArray(item.children)) {
+    const { weeks, other } = weeklyBreakdown(item, currentCycle);
+    const box = document.createElement('div');
+    box.className = 'week-totals';
+    const addRow = (label, value) => {
+      const row = document.createElement('div');
+      row.className = 'week-row';
+      const l = document.createElement('span');
+      l.textContent = label;
+      const v = document.createElement('span');
+      v.textContent = formatCurrency(value);
+      row.append(l, v);
+      box.appendChild(row);
+    };
+    const md = d => `${d.getMonth() + 1}/${d.getDate()}`;
+    weeks.forEach(w => addRow(`${md(w.from)}〜${md(w.to)}`, w.total));
+    // 日付を入れていない記録があると週の合計が小計に足りなくなるので、
+    // その分だけ別行で見せて帳尻が合うようにする。
+    if (other > 0) addRow('日付なし', other);
+    container.appendChild(box);
   }
 
   const subtotal = document.createElement('div');
